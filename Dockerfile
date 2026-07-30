@@ -9,14 +9,25 @@ ARG QEMU_VERSION=7.0.0
 ARG HOME=/root
 ARG DEBIAN_FRONTEND=noninteractive
 
+# The default ARM Ubuntu mirror is unreliable behind some Docker Desktop
+# proxy/Fake-IP setups. Use a compatible mirror before installing packages.
+RUN sed -i \
+    's|http://ports.ubuntu.com/ubuntu-ports|http://mirrors.aliyun.com/ubuntu-ports|g' \
+    /etc/apt/sources.list
+
 # Install basic tools
 RUN apt-get update && \
-    apt-get install -y \
+    apt-get \
+      -o Acquire::Retries=10 \
+      -o Acquire::http::Timeout=60 \
+      -o Acquire::https::Timeout=60 \
+      install -y \
     curl \
     git \
     python3 \
     wget \
-    xz-utils
+    xz-utils && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /root
@@ -26,15 +37,25 @@ RUN wget https://download.qemu.org/qemu-${QEMU_VERSION}.tar.xz && \
     tar xvJf qemu-${QEMU_VERSION}.tar.xz
 
 # Install QEMU build dependencies
-RUN apt-get install -y \
+RUN apt-get update && \
+    apt-get \
+      -o Acquire::Retries=10 \
+      -o Acquire::http::Timeout=60 \
+      -o Acquire::https::Timeout=60 \
+      install -y --fix-missing \
     autoconf automake autotools-dev curl libmpc-dev libmpfr-dev libgmp-dev \
     gawk build-essential bison flex texinfo gperf libtool patchutils bc \
     zlib1g-dev libexpat-dev git \
-    ninja-build pkg-config libglib2.0-dev libpixman-1-dev libsdl2-dev
+    ninja-build pkg-config libglib2.0-dev libpixman-1-dev && \
+    rm -rf /var/lib/apt/lists/*
 
 # Build and install QEMU
 WORKDIR /root/qemu-7.0.0
-RUN ./configure --target-list=riscv64-softmmu,riscv64-linux-user && \
+RUN ./configure \
+      --target-list=riscv64-softmmu,riscv64-linux-user \
+      --disable-sdl \
+      --disable-gtk \
+      --disable-opengl && \
     make -j$(nproc) && \
     make install
 
